@@ -1,14 +1,8 @@
 name: Android CI
 
-# 消除 Node.js 20 警告
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-
 on:
   push:
     branches: [ main, master ]
-    tags:
-      - 'v*'
   pull_request:
     branches: [ main, master ]
 
@@ -25,7 +19,6 @@ jobs:
       with:
         java-version: '17'
         distribution: 'temurin'
-        cache: gradle  # 加速构建，防止失败
 
     - name: Setup Android SDK
       uses: android-actions/setup-android@v3
@@ -33,9 +26,8 @@ jobs:
     - name: Grant execute permission for gradlew
       run: chmod +x gradlew
 
-    # 关键修复：显示完整错误 + 稳定编译
     - name: Build with Gradle
-      run: ./gradlew assembleDebug --stacktrace --info
+      run: ./gradlew assembleDebug
 
     - name: Upload APK artifact
       uses: actions/upload-artifact@v4
@@ -44,22 +36,37 @@ jobs:
         path: app/build/outputs/apk/debug/app-debug.apk
         retention-days: 30
 
-    # 以下是完全修复的发布流程（不会再失败）
-    - name: Create Release
+    - name: Generate APK download link
+      run: |
+        echo "APK构建完成！"
+        echo "下载链接将在GitHub Actions页面提供"
+
+    - name: Create release on tag
       if: startsWith(github.ref, 'refs/tags/')
-      uses: softprops/action-gh-release@v2
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
-        name: Release ${{ github.ref_name }}
+        tag_name: ${{ github.ref }}
+        release_name: Release ${{ github.ref }}
         draft: false
         prerelease: false
         body: |
-          自动构建的 PhoneCleaner APK 文件
-
+          自动构建的PhoneCleaner APK文件
+          
           功能特性：
           - 实时后台程序监控
-          - 内存和 CPU 使用率显示
+          - 内存和CPU使用率显示
           - 一键清理无用进程
           - 现代化界面设计
-        files: app/build/outputs/apk/debug/app-debug.apk
+
+    - name: Upload APK to release
+      if: startsWith(github.ref, 'refs/tags/')
+      uses: actions/upload-release-asset@v1
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ github.event.release.upload_url }}
+        asset_path: app/build/outputs/apk/debug/app-debug.apk
+        asset_name: PhoneCleaner-${{ github.ref_name }}.apk
+        asset_content_type: application/vnd.android.package-archive
